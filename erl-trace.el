@@ -1,10 +1,10 @@
-;;; test.el --- a simple package                     -*- lexical-binding: t; -*-
+;;; erl-trace.el --- a simple package                     -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2014  Nic Ferrier
 
 ;; Author: Dat <abc@xyz>
 ;; Keywords: lisp
-;; Version: 0.0.1
+;; Version: 1.0
 
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
