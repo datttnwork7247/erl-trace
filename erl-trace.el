@@ -36,7 +36,7 @@
 
 (defconst erl-trace-iotrace-debug-macro
   "-define(IO_TRACE_DEBUG, true).
--ifdef(IO_TRACE_DEBUG).
+-if(?IO_TRACE_DEBUG).
 -define(iotd(Fmt, Args), io:format(\"~p:~p:~p \"++Fmt++\"~n\", [?MODULE, ?FUNCTION_NAME, ?LINE] ++ Args)).
 -define(iotdd(Fmt, Args),
         io:format(\"~p:~p:~s:~p:~p:~p: \"++Fmt++\"~n\",
@@ -44,7 +44,7 @@
                    erl_trace_get_user(),
                    erl_trace_timestamp(),
                    ?MODULE, ?FUNCTION_NAME, ?LINE] ++ Args)).
--else.
+-elif(true).
 -define(iotd(_Fmt, _Args), ok).
 -define(iotdd(_Fmt, _Args), ok).
 -endif.
@@ -232,7 +232,7 @@ end,")
 (defun erl-trace-no-iotrace-macro ()
   (beginning-of-buffer)
   (if (condition-case
-          nil (search-forward "-ifdef(IO_TRACE_DEBUG).")
+          nil (search-forward "IO_TRACE_DEBUG")
         (error nil))
       nil t))
 
