@@ -37,6 +37,7 @@
 (defconst erl-trace-iotrace-debug-macro
   "-define(IO_TRACE_DEBUG, true).
 -if(?IO_TRACE_DEBUG).
+-define(iotd(Fmt), io:format(\"~p:~p:~p \"++Fmt++\"~n\", [?MODULE, ?FUNCTION_NAME, ?LINE])).
 -define(iotd(Fmt, Args), io:format(\"~p:~p:~p \"++Fmt++\"~n\", [?MODULE, ?FUNCTION_NAME, ?LINE] ++ Args)).
 -define(iotdd(Fmt, Args),
         io:format(\"~p:~p:~s:~p:~p:~p: \"++Fmt++\"~n\",
@@ -45,6 +46,7 @@
                    erl_trace_timestamp(),
                    ?MODULE, ?FUNCTION_NAME, ?LINE] ++ Args)).
 -elif(true).
+-define(iotd(_Fmt), ok).
 -define(iotd(_Fmt, _Args), ok).
 -define(iotdd(_Fmt, _Args), ok).
 -endif.
@@ -157,7 +159,8 @@ end,")
   (when (equal (erl-trace-what-at-point) 'variable)
     (let* ((var (thing-at-point 'symbol))
            (nstored (append erl-trace-stored (list var))))
-      (setq erl-trace-stored nstored))))
+      (setq erl-trace-stored nstored)
+      (message "Stored: %s" erl-trace-stored))))
 
 ;; -----------------------------------------------------------------------------
 ;; INSERT
@@ -269,7 +272,7 @@ end,")
          (let* ((var (thing-at-point 'symbol))
                 (fmt (if (or (string-match-p "IKeypath" var)
                              (string-match-p "IKP" var))
-                         (concat " ->" var ": ~999p")
+                         (concat " -->" var ": ~999p")
                        (concat "~n" var ": ~p")))
                 (args (if (equal erl-trace-explicit 'false) var (concat ", " var))))
            (erl-trace-concat fmt args)))
@@ -330,7 +333,9 @@ end,")
   (if (cdr vars)
       (let* ((head (car vars))
              (tail (cdr vars))
-             (nacc (concat acc ", " head)))
+             (nacc (if (equal erl-trace-explicit 'false)
+                       (concat acc head ", ")
+                     (concat acc ", " head))))
         (erl-trace-args-vars tail nacc))
     (if (equal erl-trace-explicit 'false)
         (concat acc (car vars))
