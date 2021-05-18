@@ -272,7 +272,7 @@ end,")
          (let* ((var (thing-at-point 'symbol))
                 (fmt (if (or (string-match-p "IKeypath" var)
                              (string-match-p "IKP" var))
-                         (concat " -->" var ": ~999p")
+                         (concat " -=>" var ": ~999p")
                        (concat "~n" var ": ~p")))
                 (args (if (equal erl-trace-explicit 'false) var (concat ", " var))))
            (erl-trace-concat fmt args)))
@@ -305,7 +305,7 @@ end,")
                     "" "~n")))
     (if (equal erl-trace-level 'detail)
         (concat printf "(\"~p:" user ":~s:~p:~p:~p:" fmt endfmt "\",\n"
-                "[erl-trace_process_info(), erl-trace_timestamp(),\n?MODULE, "
+                "[erl_trace_process_info(), erl_trace_timestamp(),\n?MODULE, "
                 func ", ?LINE" args "]),")
       (concat printf "(\"~p:~p:~p:" fmt endfmt "\", [?MODULE, " func ", ?LINE"
               args "]),"))))
