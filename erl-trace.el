@@ -37,8 +37,8 @@
 (defconst erl-trace-iotrace-debug-macro
   "-define(IO_TRACE_DEBUG, true).
 -if(?IO_TRACE_DEBUG).
--define(iotd(Fmt), io:format(\"~p:~p:~p \"++Fmt++\"~n\", [?MODULE, ?FUNCTION_NAME, ?LINE])).
--define(iotd(Fmt, Args), io:format(\"~p:~p:~p \"++Fmt++\"~n\", [?MODULE, ?FUNCTION_NAME, ?LINE] ++ Args)).
+-define(iotd(Fmt), io:format(\"~p:~p:~p \"++Fmt, [?MODULE, ?FUNCTION_NAME, ?LINE])).
+-define(iotd(Fmt, Args), io:format(\"~p:~p:~p \"++Fmt, [?MODULE, ?FUNCTION_NAME, ?LINE] ++ Args)).
 -define(iotdd(Fmt, Args),
         io:format(\"~p:~p:~s:~p:~p:~p: \"++Fmt++\"~n\",
                   [erl_trace_process_info(),
