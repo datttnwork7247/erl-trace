@@ -39,8 +39,16 @@
 -if(?IO_TRACE_DEBUG).
 -define(iotd(Fmt), io:format(\"~p:~p:~p \"++Fmt, [?MODULE, ?FUNCTION_NAME, ?LINE])).
 -define(iotd(Fmt, Args), io:format(\"~p:~p:~p \"++Fmt, [?MODULE, ?FUNCTION_NAME, ?LINE] ++ Args)).
+-define(cttd(Fmt), ct:pal(\"~p:~p:~p \"++Fmt, [?MODULE, ?FUNCTION_NAME, ?LINE])).
+-define(cttd(Fmt, Args), ct:pal(\"~p:~p:~p \"++Fmt, [?MODULE, ?FUNCTION_NAME, ?LINE] ++ Args)).
 -define(iotdd(Fmt, Args),
         io:format(\"~p:~p:~s:~p:~p:~p: \"++Fmt++\"~n\",
+                  [erl_trace_process_info(),
+                   erl_trace_get_user(),
+                   erl_trace_timestamp(),
+                   ?MODULE, ?FUNCTION_NAME, ?LINE] ++ Args)).
+-define(cttdd(Fmt, Args),
+        ct:pal(\"~p:~p:~s:~p:~p:~p: \"++Fmt++\"~n\",
                   [erl_trace_process_info(),
                    erl_trace_get_user(),
                    erl_trace_timestamp(),
@@ -49,6 +57,9 @@
 -define(iotd(_Fmt), ok).
 -define(iotd(_Fmt, _Args), ok).
 -define(iotdd(_Fmt, _Args), ok).
+-define(cttd(_Fmt), ok).
+-define(cttd(_Fmt, _Args), ok).
+-define(cttdd(_Fmt, _Args), ok).
 -endif.
 ")
 
@@ -311,7 +322,17 @@ end,")
               args "]),"))))
 
 (defun erl-trace-concat-use-macro (fmt args)
-  (let ((prefix (if (equal erl-trace-level 'detail) "?iotdd" "?iotd"))
+  (let ((prefix
+         (cond
+          ((and (equal erl-trace-level 'simple) (equal erl-trace-ct-pal 'false))
+           "?iotd")
+          ((and (equal erl-trace-level 'simple) (equal erl-trace-ct-pal 'true))
+           "?cttd")
+          ((and (equal erl-trace-level 'detail) (equal erl-trace-ct-pal 'false))
+           "?iotdd")
+          ((and (equal erl-trace-level 'detail) (equal erl-trace-ct-pal 'true))
+           "?cttdd")
+          ))
         (argslist (if (equal args "") ""
                     (concat ", [" args "]")))
         (endfmt (if (or (equal erl-trace-ct-pal 'true)
