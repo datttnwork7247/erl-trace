@@ -19,15 +19,6 @@
 ;; You should have received a copy of the GNU General Public License
 ;; along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-;;; Commentary:
-;; Put a description of the package here
-;; Automatically insert io:format to:
-;; - Print out a atom or value of a parameter.[C-c C-t]
-;; - Store parameters for print out [C-c C-r]
-;; - Put clauses trace after `->' characters [C-e erl-trace-clause]
-;; - Put stack trace [C-e erl-trace-stack]
-;; - And more
-
 (defconst erl-trace-macro
   "-ifndef(FUNC).
 -define(FUNC, element(2, element(2, process_info(self(), current_function)))).

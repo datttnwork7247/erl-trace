@@ -1,0 +1,22 @@
+#+TITLE: erl-trace
+
+#+TAGS: erlang|trace|erl-trace
+
+* Description
+  Put some io:format in erlang files
+
+* Key bindings
+
+| Key binding          | Description                                      |
+|----------------------+--------------------------------------------------|
+| ~C-c C-t~            | Print out a atom or value of a parameter.        |
+| ~C-c C-r~            | Store parameters for print out                   |
+| ~C-c C-e~            | Extra commands                                   |
+| Commands:            | -----------------------------------------        |
+| erl-trace-info       | Show stored parameters                           |
+| erl-trace-level      | Toggle between simple and complex trace level    |
+| erl-trace-ctpal      | Toggle trace for erlang common test (use ct:pal) |
+| erl-trace-explicit   | Toogle use io:format explicitly                  |
+| erl-trace-clause     | Put trace after ->                               |
+| erl-trace-stacktrace | Put stacktrace by try-catch                      |
+
