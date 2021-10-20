@@ -1,11 +1,6 @@
 ;;; erl-trace.el --- a simple package                     -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2021
-
-;; Author: MrX <abc@xyz>
-;; Keywords: erl-trace
-;; Version: 1.0
-
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
 ;; the Free Software Foundation, either version 3 of the License, or
@@ -27,32 +22,38 @@
 
 (defconst erl-trace-iotrace-debug-macro
   "-define(IO_TRACE_DEBUG, true).
--if(?IO_TRACE_DEBUG).
--define(iotd(Fmt), io:format(\"~p:~p:~p \"++Fmt, [?MODULE, ?FUNCTION_NAME, ?LINE])).
--define(iotd(Fmt, Args), io:format(\"~p:~p:~p \"++Fmt, [?MODULE, ?FUNCTION_NAME, ?LINE] ++ Args)).
--define(cttd(Fmt), ct:pal(\"~p:~p:~p \"++Fmt, [?MODULE, ?FUNCTION_NAME, ?LINE])).
--define(cttd(Fmt, Args), ct:pal(\"~p:~p:~p \"++Fmt, [?MODULE, ?FUNCTION_NAME, ?LINE] ++ Args)).
--define(iotdd(Fmt, Args),
-        io:format(\"~p:~p:~s:~p:~p:~p: \"++Fmt++\"~n\",
-                  [erl_trace_process_info(),
-                   erl_trace_get_user(),
-                   erl_trace_timestamp(),
-                   ?MODULE, ?FUNCTION_NAME, ?LINE] ++ Args)).
--define(cttdd(Fmt, Args),
-        ct:pal(\"~p:~p:~s:~p:~p:~p: \"++Fmt++\"~n\",
-                  [erl_trace_process_info(),
-                   erl_trace_get_user(),
-                   erl_trace_timestamp(),
-                   ?MODULE, ?FUNCTION_NAME, ?LINE] ++ Args)).
--elif(true).
--define(iotd(_Fmt), ok).
--define(iotd(_Fmt, _Args), ok).
--define(iotdd(_Fmt, _Args), ok).
--define(cttd(_Fmt), ok).
--define(cttd(_Fmt, _Args), ok).
--define(cttdd(_Fmt, _Args), ok).
--endif.
+-define(iotd(Fmt), erl_trace(Fmt, [], {io, simple})).
+-define(iotd(Fmt, Args), erl_trace(Fmt, Args, {io, simple})).
+-define(iotdd(Fmt), erl_trace(Fmt, {io, [],complex})).
+-define(iotdd(Fmt, Args), erl_trace(Fmt, Args, {io, complex})),
+-define(cttd(Fmt), erl_trace(Fmt, [], {ct, simple})).
+-define(cttd(Fmt, Args), erl_trace(Fmt, Args, {ct, simple})).
+-define(cttdd(Fmt), erl_trace(Fmt, [], {ct, complex})).
+-define(cttdd(Fmt, Args), erl_trace(Fmt, Args, {ct, complex})).
 ")
+
+(defconst erl-trace-function
+  "%% erl-trace support functions
+erl_trace(_, _, _) when ?IO_TRACE_DEBUG == false ->
+    ok;
+erl_trace(Fmt, Args, {Type, Level}) ->
+    {FullFmt, FullArgs} =
+        case Level of
+            simple ->
+                {\"~p:~p:~p \"++Fmt, [?MODULE, ?FUNCTION_NAME, ?LINE] ++ Args};
+            complex ->
+                {\"~p:~p:~s:~p:~p:~p: \"++Fmt++\"~n\",
+                 [erl_trace_process_info(),
+                  erl_trace_get_user(),
+                  erl_trace_timestamp(),
+                  ?MODULE, ?FUNCTION_NAME, ?LINE] ++ Args}
+        end,
+    case Type of
+        io ->
+            io:format(FullFmt, FullArgs);
+        ct ->
+            ct:pal(FullFmt, FullArgs)
+    end.")
 
 (defconst erl-trace-timestamp
   "erl_trace_timestamp() ->
@@ -142,6 +143,8 @@ end,")
 ;; -----------------------------------------------------------------------------
 (defun erl-trace-stacktrace ()
   "Adding stacktrace at point."
+  (erl-trace-maybe-insert-iotrace-macro)
+  (erl-trace-maybe-insert-supfun)
   (let ((start-point (point)))
     (newline)
     (if (< erl-trace-erlang-vsn 22)
@@ -169,8 +172,8 @@ end,")
 ;; -----------------------------------------------------------------------------
 (defun erl-trace-insert ()
   (interactive)
-  (erl-trace-maybe-insert-supfun)
   (erl-trace-maybe-insert-iotrace-macro)
+  (erl-trace-maybe-insert-supfun)
   (cond ((equal (erl-trace-what-at-point) 'atom)
          (erl-trace-debug-msg "Insert %s..." "atom")
          (erl-trace-insert-string (erl-trace-build-string 'atom)))
@@ -207,7 +210,11 @@ end,")
       (erl-trace-insert-string erl-trace-get-user-name t)
       (goto-char (- (point) 1))
       (newline)
-      (erl-trace-insert-string erl-trace-procinfo t))))
+      (erl-trace-insert-string erl-trace-procinfo t)
+      (goto-char (- (point) 1))
+      (newline)
+      (erl-trace-insert-string erl-trace-function t)
+      )))
 
 (defun erl-trace-maybe-insert-iotrace-macro ()
   "Check whether we need to insert macro for explicit io:format."
@@ -253,12 +260,11 @@ end,")
       nil t))
 
 (defun erl-trace-need-supfun ()
-  (when (equal erl-trace-level 'detail)
-    (end-of-buffer)
-    (if (condition-case
-            nil (search-backward "erl_trace_timestamp() ->")
-          (error nil))
-        nil t)))
+  (end-of-buffer)
+  (if (condition-case
+          nil (search-backward "erl-trace support functions")
+        (error nil))
+      nil t))
 
 (defun erl-trace-build-string (type)
   (cond ((equal type 'nothing)
@@ -403,6 +409,7 @@ end,")
 (setq max-specpdl-size 13000)
 (defun erl-trace-clause ()
   (save-excursion
+    (erl-trace-maybe-insert-iotrace-macro)
     (erl-trace-maybe-insert-supfun)
     (erlang-end-of-function)
     (let ((stop-point (point)))
