@@ -20,39 +20,33 @@
 -endif.
 ")
 
-(defconst erl-trace-iotrace-debug-macro
+(defconst erl-trace-iotrace-macro
   "-define(IO_TRACE_DEBUG, true).
--define(iotd(Fmt), erl_trace(Fmt, [], {io, simple})).
--define(iotd(Fmt, Args), erl_trace(Fmt, Args, {io, simple})).
--define(iotdd(Fmt), erl_trace(Fmt, {io, [],complex})).
--define(iotdd(Fmt, Args), erl_trace(Fmt, Args, {io, complex})),
--define(cttd(Fmt), erl_trace(Fmt, [], {ct, simple})).
--define(cttd(Fmt, Args), erl_trace(Fmt, Args, {ct, simple})).
--define(cttdd(Fmt), erl_trace(Fmt, [], {ct, complex})).
--define(cttdd(Fmt, Args), erl_trace(Fmt, Args, {ct, complex})).
+-define(iotd(Fmt), erl_trace(Fmt, [?MODULE, ?FUNCTION_NAME, ?LINE], {io, simple})).
+-define(iotd(Fmt, Args), erl_trace(Fmt, [?MODULE, ?FUNCTION_NAME, ?LINE] ++ Args, {io, simple})).
+-define(iotdd(Fmt), erl_trace(Fmt, {io, [?MODULE, ?FUNCTION_NAME, ?LINE],complex})).
+-define(iotdd(Fmt, Args), erl_trace(Fmt, [?MODULE, ?FUNCTION_NAME, ?LINE] ++ Args, {io, complex})),
+-define(cttd(Fmt), erl_trace(Fmt, [?MODULE, ?FUNCTION_NAME, ?LINE], {ct, simple})).
+-define(cttd(Fmt, Args), erl_trace(Fmt, [?MODULE, ?FUNCTION_NAME, ?LINE] ++ Args, {ct, simple})).
+-define(cttdd(Fmt), erl_trace(Fmt, {ct, [?MODULE, ?FUNCTION_NAME, ?LINE],complex})).
+-define(cttdd(Fmt, Args), erl_trace(Fmt, [?MODULE, ?FUNCTION_NAME, ?LINE] ++ Args, {ct, complex})),
 ")
 
 (defconst erl-trace-function
   "%% erl-trace support functions
-erl_trace(_, _, _) when ?IO_TRACE_DEBUG == false ->
-    ok;
+-ifdef(IO_TRACE_DEBUG).
 erl_trace(Fmt, Args, {Type, Level}) ->
     {FullFmt, FullArgs} =
         case Level of
-            simple ->
-                {\"~p:~p:~p \"++Fmt, [?MODULE, ?FUNCTION_NAME, ?LINE] ++ Args};
-            complex ->
-                {\"~p:~p:~s:~p:~p:~p: \"++Fmt++\"~n\",
-                 [erl_trace_process_info(),
-                  erl_trace_get_user(),
-                  erl_trace_timestamp(),
-                  ?MODULE, ?FUNCTION_NAME, ?LINE] ++ Args}
+            simple -> {\"~p:~p:~p \"++Fmt, Args};
+            complex -> {\"~p:~p:~s:~p:~p:~p: \"++Fmt++\"~n\",
+                        [erl_trace_process_info(),
+                         erl_trace_get_user(),
+                         erl_trace_timestamp()] ++ Args}
         end,
     case Type of
-        io ->
-            io:format(FullFmt, FullArgs);
-        ct ->
-            ct:pal(FullFmt, FullArgs)
+        io -> io:format(FullFmt, FullArgs);
+        ct -> ct:pal(FullFmt, FullArgs)
     end.")
 
 (defconst erl-trace-timestamp
@@ -61,7 +55,8 @@ erl_trace(Fmt, Args, {Type, Level}) ->
     {_, {Hour, Min, Sec}} = calendar:now_to_local_time({MS, S, US}),
     MSec = trunc(US/1000),
     lists:flatten(io_lib:format(\"~2.10.0B:~2.10.0B:~2.10.0B.~3.10.0B\",
-                                [Hour, Min, Sec, MSec])).")
+                                [Hour, Min, Sec, MSec])).
+-endif.")
 
 (defconst erl-trace-get-user-name
   "erl_trace_get_user() ->
@@ -222,7 +217,7 @@ end,")
     (when (erl-trace-no-iotrace-macro)
       (erl-trace-debug-msg "Insert %s..." "explicit")
       (beginning-of-buffer)
-      (erl-trace-insert-string erl-trace-iotrace-debug-macro t))))
+      (erl-trace-insert-string erl-trace-iotrace-macro t))))
 
 (defun erl-trace-maybe-delete-iotrace-macro ()
   "Check whether we need to delete macro for explicit io:format."
