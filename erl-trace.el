@@ -25,11 +25,11 @@
 -define(iotd(Fmt), erl_trace(Fmt, [?MODULE, ?FUNCTION_NAME, ?LINE], {io, simple})).
 -define(iotd(Fmt, Args), erl_trace(Fmt, [?MODULE, ?FUNCTION_NAME, ?LINE] ++ Args, {io, simple})).
 -define(iotdd(Fmt), erl_trace(Fmt, {io, [?MODULE, ?FUNCTION_NAME, ?LINE],complex})).
--define(iotdd(Fmt, Args), erl_trace(Fmt, [?MODULE, ?FUNCTION_NAME, ?LINE] ++ Args, {io, complex})),
+-define(iotdd(Fmt, Args), erl_trace(Fmt, [?MODULE, ?FUNCTION_NAME, ?LINE] ++ Args, {io, complex})).
 -define(cttd(Fmt), erl_trace(Fmt, [?MODULE, ?FUNCTION_NAME, ?LINE], {ct, simple})).
 -define(cttd(Fmt, Args), erl_trace(Fmt, [?MODULE, ?FUNCTION_NAME, ?LINE] ++ Args, {ct, simple})).
 -define(cttdd(Fmt), erl_trace(Fmt, {ct, [?MODULE, ?FUNCTION_NAME, ?LINE],complex})).
--define(cttdd(Fmt, Args), erl_trace(Fmt, [?MODULE, ?FUNCTION_NAME, ?LINE] ++ Args, {ct, complex})),
+-define(cttdd(Fmt, Args), erl_trace(Fmt, [?MODULE, ?FUNCTION_NAME, ?LINE] ++ Args, {ct, complex})).
 ")
 
 (defconst erl-trace-function
