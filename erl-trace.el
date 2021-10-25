@@ -451,10 +451,6 @@ end,")
   (global-set-key (kbd "C-c C-t") 'erl-trace-insert)
   (global-set-key (kbd "C-c C-e") 'erl-trace-run-cmd)
   (global-set-key (kbd "C-c C-r") 'erl-trace-store)
-
-  (global-set-key [f6] 'cmpload-compile-and-load)
-  (global-set-key [f12] 'cmpload-compile-and-load-f12)
-  (global-set-key [\C-f12] 'cmpload-compile-and-load-cf12)
   )
 (erl-trace-key-bindings)
 
