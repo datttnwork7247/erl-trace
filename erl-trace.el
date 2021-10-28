@@ -36,17 +36,21 @@
   "%% erl-trace support functions
 -ifdef(IO_TRACE_DEBUG).
 erl_trace(Fmt, Args, {Type, Level}) ->
-    {FullFmt, FullArgs} =
-        case Level of
-            simple -> {\"~p:~p:~p \"++Fmt, Args};
-            complex -> {\"~p:~p:~s:~p:~p:~p: \"++Fmt++\"~n\",
-                        [erl_trace_process_info(),
-                         erl_trace_get_user(),
-                         erl_trace_timestamp()] ++ Args}
-        end,
-    case Type of
-        io -> io:format(FullFmt, FullArgs);
-        ct -> ct:pal(FullFmt, FullArgs)
+    case ?IO_TRACE_DEBUG of
+        true ->
+            {FullFmt, FullArgs} =
+                case Level of
+                    simple -> {\"~p:~p:~p \"++Fmt, Args};
+                    complex -> {\"~p:~p:~s:~p:~p:~p: \"++Fmt++\"~n\",
+                                [erl_trace_process_info(),
+                                 erl_trace_get_user(),
+                                 erl_trace_timestamp()] ++ Args}
+                end,
+            case Type of
+                io -> io:format(FullFmt, FullArgs);
+                ct -> ct:pal(FullFmt, FullArgs)
+            end;
+       false -> ok
     end.")
 
 (defconst erl-trace-timestamp
