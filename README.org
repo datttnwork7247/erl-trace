@@ -5,7 +5,7 @@
 * Description
   Put some io:format/ct:pal in erlang files.
   This is kind of "reinvent the wheel", I use it because I used to it.
-  If you have a more effective tool, consider using it.
+  If you have a more effective tool, consider using that one.
 
 * Key bindings
 
