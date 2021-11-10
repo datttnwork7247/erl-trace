@@ -3,9 +3,9 @@
 #+TAGS: erlang|trace|erl-trace
 
 * Description
-  Put some io:format/ct:pal in erlang files.\n
-  This is kind of "reinvent the wheel", I use it because I used to it.\n
-  If you have a more effective tool, consider using it.\n
+  Put some io:format/ct:pal in erlang files.
+  This is kind of "reinvent the wheel", I use it because I used to it.
+  If you have a more effective tool, consider using it.
 
 * Key bindings
 
