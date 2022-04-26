@@ -50,7 +50,13 @@ erl_trace(Fmt, Args, {Type, Level}) ->
                 io -> io:format(FullFmt, FullArgs);
                 ct -> ct:pal(FullFmt, FullArgs)
             end;
-       false -> ok
+        false ->
+            case get(io_skipped_inform) of
+                true -> ok;
+                _ ->
+                    io:format(\"~p: Skip erl-trace .........~n\", [?MODULE]),
+                    put(io_skipped_inform, true)
+            end
     end.")
 
 (defconst erl-trace-timestamp
