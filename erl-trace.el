@@ -1,4 +1,5 @@
 ;;; erl-trace.el --- a simple package                     -*- lexical-binding: t; -*-
+;; Package-Version: 20211028.1412
 
 ;; Copyright (C) 2021
 ;; This program is free software; you can redistribute it and/or modify
@@ -50,13 +51,7 @@ erl_trace(Fmt, Args, {Type, Level}) ->
                 io -> io:format(FullFmt, FullArgs);
                 ct -> ct:pal(FullFmt, FullArgs)
             end;
-        false ->
-            case get(io_skipped_inform) of
-                true -> ok;
-                _ ->
-                    io:format(\"~p: Skip erl-trace .........~n\", [?MODULE]),
-                    put(io_skipped_inform, true)
-            end
+       false -> ok
     end.")
 
 (defconst erl-trace-timestamp
@@ -199,32 +194,35 @@ end,")
 
 (defun erl-trace-maybe-insert-supfun ()
   "Check whether we need to insert macro or support functions."
-  (erl-trace-erlang-version)
-  (save-excursion
-    (when (erl-trace-need-macro)
-      (erl-trace-debug-msg "Insert %s..." "macro")
-      (beginning-of-buffer)
-      (erl-trace-insert-string erl-trace-macro t))
-    (when (erl-trace-need-supfun)
-      (erl-trace-debug-msg "Insert %s..." "support function")
-      (end-of-buffer)
-      (newline)
-      (erl-trace-insert-string erl-trace-timestamp t)
-      (goto-char (- (point) 1))
-      (newline)
-      (erl-trace-insert-string erl-trace-get-user-name t)
-      (goto-char (- (point) 1))
-      (newline)
-      (erl-trace-insert-string erl-trace-procinfo t)
-      (goto-char (- (point) 1))
-      (newline)
-      (erl-trace-insert-string erl-trace-function t)
-      )))
+  (if (string-match ".*.erl" (buffer-file-name))
+      (progn
+        (erl-trace-erlang-version)
+        (save-excursion
+          (when (erl-trace-need-macro)
+            (erl-trace-debug-msg "Insert %s..." "macro")
+            (beginning-of-buffer)
+            (erl-trace-insert-string erl-trace-macro t))
+          (when (erl-trace-need-supfun)
+            (erl-trace-debug-msg "Insert %s..." "support function")
+            (end-of-buffer)
+            (newline)
+            (erl-trace-insert-string erl-trace-timestamp t)
+            (goto-char (- (point) 1))
+            (newline)
+            (erl-trace-insert-string erl-trace-get-user-name t)
+            (goto-char (- (point) 1))
+            (newline)
+            (erl-trace-insert-string erl-trace-procinfo t)
+            (goto-char (- (point) 1))
+            (newline)
+            (erl-trace-insert-string erl-trace-function t)
+            )))))
 
 (defun erl-trace-maybe-insert-iotrace-macro ()
   "Check whether we need to insert macro for explicit io:format."
   (save-excursion
-    (when (erl-trace-no-iotrace-macro)
+    (when (and (erl-trace-no-iotrace-macro)
+               (string-match ".*.erl" (buffer-file-name)))
       (erl-trace-debug-msg "Insert %s..." "explicit")
       (beginning-of-buffer)
       (erl-trace-insert-string erl-trace-iotrace-macro t))))
