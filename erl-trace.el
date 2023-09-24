@@ -88,6 +88,7 @@ catch _Class:_Reason:Stacktrace-!- ->
 end,")
 
 (defvar erl-trace-erlang-vsn nil)
+(defvar erl-trace-mode 'debug)
 (defvar erl-trace-level 'simple)
 (defvar erl-trace-ct-pal 'false)
 (defvar erl-trace-explicit 'false)
@@ -121,6 +122,26 @@ end,")
   (if (equal erl-trace-ct-pal 'false)
       (setq erl-trace-ct-pal 'true)
     (setq erl-trace-ct-pal 'false)))
+
+;; -----------------------------------------------------------------------------
+;; SET-MODE
+;; -----------------------------------------------------------------------------
+(defun erl-trace-set-mode ()
+  (interactive)
+  (let ((tracemode (completing-read "Mode:" '("debug"
+                                               "info"
+                                               "error"
+                                               "io"
+                                               "ct"))))
+    (cond ((equal tracemode "debug") (setq erl-trace-mode 'debug))
+          ((equal tracemode "error") (setq erl-trace-mode 'error))
+          ((equal tracemode "info") (setq erl-trace-mode 'info))
+          ((equal tracemode "io") (setq erl-trace-mode 'io))
+          ((equal tracemode "ct") (setq erl-trace-mode 'ct))
+          (t 'io)
+          )
+    )
+  )
 
 ;; -----------------------------------------------------------------------------
 ;; EXPLICIT-TOOGLE
@@ -308,9 +329,12 @@ end,")
 (defun erl-trace-concat-explicit (fmt args)
   (let ((user (getenv "USER"))
         (func (if (< erl-trace-erlang-vsn 19) "?FUNC" "?FUNCTION_NAME"))
-        (printf (if (or (equal erl-trace-ct-pal 'true)
-                        (string-match ".*_SUITE.erl" (buffer-file-name)))
-                    "ct:pal" "io:format"))
+        (printf (cond ((equal erl-trace-mode 'debug) "?LOG_DEBUG")
+                      ((equal erl-trace-mode 'error) "?LOG_ERROR")
+                      ((equal erl-trace-mode 'info) "?LOG_INFO")
+                      ((equal erl-trace-mode 'ct) "ct:pal")
+                      (t "io:format")
+                ))
         (endfmt (if (or (equal erl-trace-ct-pal 'true)
                         (string-match ".*_SUITE.erl" (buffer-file-name)))
                     "" "~n")))
@@ -438,19 +462,22 @@ end,")
 ;; -----------------------------------------------------------------------------
 (defun erl-trace-run-cmd ()
   (interactive)
-  (let ((command (completing-read "Run erl-trace: " '("erl-trace-info"
+  (let ((command (completing-read "Run erl-trace: " '("erl-trace-set-mode"
+                                                      "erl-trace-info"
                                                       "erl-trace-level"
                                                       "erl-trace-ctpal"
                                                       "erl-trace-explicit"
                                                       "erl-trace-clause"
                                                       "erl-trace-stacktrace"))))
-    (cond ((equal command "erl-trace-info")       (erl-trace-show-info))
-          ((equal command "erl-trace-level")      (erl-trace-level-toggle))
-          ((equal command "erl-trace-ctpal")      (erl-trace-ct-pal-toggle))
-          ((equal command "erl-trace-explicit")    (erl-trace-explicit-toggle))
-          ((equal command "erl-trace-clause")     (erl-trace-clause))
-          ((equal command "erl-trace-stacktrace") (erl-trace-stacktrace))
-          )))
+    (cond
+     ((equal command "erl-trace-set-mode")       (erl-trace-set-mode))
+     ((equal command "erl-trace-info")       (erl-trace-show-info))
+     ((equal command "erl-trace-level")      (erl-trace-level-toggle))
+     ((equal command "erl-trace-ctpal")      (erl-trace-ct-pal-toggle))
+     ((equal command "erl-trace-explicit")    (erl-trace-explicit-toggle))
+     ((equal command "erl-trace-clause")     (erl-trace-clause))
+     ((equal command "erl-trace-stacktrace") (erl-trace-stacktrace))
+     )))
 
 ;; -----------------------------------------------------------------------------
 ;; RUN-COMMAND
@@ -473,3 +500,5 @@ end,")
   (when erl-trace-debug (apply 'message (add-to-list 'args format))))
 
 (provide 'erl-trace)
+
+;;; erl-trace.el ends here
