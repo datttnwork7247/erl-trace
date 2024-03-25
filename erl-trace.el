@@ -87,10 +87,9 @@ catch _Class:_Reason:Stacktrace-!- ->
         ok
 end,")
 
-(defvar erl-trace-erlang-vsn nil)
+(defvar erl-trace-erlang-vsn 23)
 (defvar erl-trace-mode 'debug)
 (defvar erl-trace-level 'simple)
-(defvar erl-trace-explicit 'false)
 (defvar erl-trace-newline-begin 'false)
 (defvar erl-trace-prefix '())
 (defvar erl-trace-stored '())
@@ -99,11 +98,9 @@ end,")
 ;; SHOW-INFO
 ;; -----------------------------------------------------------------------------
 (defun erl-trace-show-info ()
-  ;; Show erl-trace parameters
-  ;; (message "Erlang version: %s" erl-trace-erlang-vsn)
-  (message "Erlang version: %s\nLevel: %s\nExplicit: %s\nCtpal: %s\nStored: %s"
-           erl-trace-erlang-vsn erl-trace-level erl-trace-explicit erl-trace-mode
-           erl-trace-stored)
+  (message "Version=%s Mode=%s Level=%s Prefix=%s Stored=%s"
+           erl-trace-erlang-vsn erl-trace-mode erl-trace-level
+           erl-trace-prefix erl-trace-stored)
   )
 
 ;; -----------------------------------------------------------------------------
@@ -133,12 +130,14 @@ end,")
                                                "info"
                                                "error"
                                                "io"
-                                               "ct"))))
+                                               "ct"
+                                               "macro"))))
     (cond ((equal tracemode "debug") (setq erl-trace-mode 'debug))
           ((equal tracemode "error") (setq erl-trace-mode 'error))
           ((equal tracemode "info") (setq erl-trace-mode 'info))
           ((equal tracemode "io") (setq erl-trace-mode 'io))
           ((equal tracemode "ct") (setq erl-trace-mode 'ct))
+          ((equal tracemode "macro") (setq erl-trace-mode 'macro))
           (t 'io)
           )
     )
@@ -150,21 +149,14 @@ end,")
   (setq erl-trace-prefix user-input)
   )
 
-;; -----------------------------------------------------------------------------
-;; EXPLICIT-TOOGLE
-;; -----------------------------------------------------------------------------
-(defun erl-trace-explicit-toggle ()
-  "Toggle erl-trace between long and short (with macro) format."
-  (if (equal erl-trace-explicit 'true)
-      (progn
-        (setq erl-trace-explicit 'false)
-        (erl-trace-maybe-insert-iotrace-macro)
-        )
-    (progn
-      (setq erl-trace-explicit 'true)
-      (erl-trace-maybe-delete-iotrace-macro))
-    )
-  )
+
+(defun erlang-get-current-function ()
+  "Get the name of the current Erlang function."
+  (interactive)
+  (require 'erlang)
+  (save-excursion
+    (erlang-beginning-of-function)
+    (erlang-get-function-name)))
 
 ;; -----------------------------------------------------------------------------
 ;; ADD STACKTRACE
@@ -223,7 +215,7 @@ end,")
 (defun erl-trace-maybe-insert-supfun ()
   "Check whether we need to insert macro or support functions."
   (if (and (string-match ".*.erl" (buffer-file-name))
-           (equal erl-trace-mode 'iotd))
+           (equal erl-trace-mode 'macro))
       (progn
         (erl-trace-erlang-version)
         (save-excursion
@@ -263,8 +255,8 @@ end,")
   (save-excursion
     (when (and (erl-trace-no-iotrace-macro)
                (string-match ".*.erl" (buffer-file-name))
-               (equal erl-trace-level 'detail))
-      (erl-trace-debug-msg "Insert %s..." "explicit")
+               (equal erl-trace-mode 'macro))
+      (erl-trace-debug-msg "Insert %s..." "erlang trace macro")
       (beginning-of-buffer)
       (erl-trace-insert-string erl-trace-iotrace-macro t))))
 
@@ -317,24 +309,24 @@ end,")
            (erl-trace-concat fmt args)))
         ((equal type 'atom)
          (let* ((atom (thing-at-point 'symbol))
-                (fmt (concat " " atom))
+                (fmt (concat atom ": "))
                 (args ""))
            (erl-trace-concat fmt args)))
         ((equal type 'variable)
          (let* ((var (thing-at-point 'symbol))
                 (fmt (if (or (string-match-p "IKeypath" var)
                              (string-match-p "IKP" var))
-                         (concat " -=>" var ": ~999p")
+                         (concat " -=>" var ": ~0p")
                        (if (equal erl-trace-newline-begin 'true)
-                           (concat "~n" var ": ~p")
-                         (concat var ": ~p"))
+                           (concat "~n" var "=~p")
+                         (concat var "=~p"))
                        ))
-                (args (if (equal erl-trace-explicit 'false) var (concat ", " var))))
+                (args (if (equal erl-trace-mode 'io) (concat ", " var) var)))
            (erl-trace-concat fmt args)))
         ((equal type 'variable)
          (let* ((var (thing-at-point 'symbol))
-                (fmt (concat "~n" var ": ~p"))
-                (args (if (equal erl-trace-explicit 'false) var (concat ", " var))))
+                (fmt (concat "~n" var "=~p "))
+                (args (if (equal erl-trace-mode 'io) (concat ", " var)  var)))
            (erl-trace-concat fmt args)))
         ((equal type 'stored)
          (let* ((vars (delete-dups erl-trace-stored))
@@ -344,13 +336,14 @@ end,")
            (erl-trace-concat fmt args)))))
 
 (defun erl-trace-concat (fmt args)
-  (if (equal erl-trace-explicit 'true)
-      (erl-trace-concat-explicit fmt args)
-    (erl-trace-concat-use-macro fmt args))
+  (if (equal erl-trace-mode 'macro) (erl-trace-concat-macro fmt args)
+    (erl-trace-concat-normal fmt args)
+    )
   )
 
-(defun erl-trace-concat-explicit (fmt args)
+(defun erl-trace-concat-normal (fmt args)
   (let ((user (getenv "USER"))
+        (prefix (if (equal erl-trace-prefix '"") (erlang-get-current-function) erl-trace-prefix))
         (func (if (< erl-trace-erlang-vsn 19) "?FUNC" "?FUNCTION_NAME"))
         (printf (cond ((equal erl-trace-mode 'debug) "?LOG_DEBUG")
                       ((equal erl-trace-mode 'error) "?LOG_ERROR")
@@ -360,23 +353,27 @@ end,")
                 ))
         (endfmt (if (or (equal erl-trace-mode 'ct)
                         (string-match ".*_SUITE.erl" (buffer-file-name)))
-                    "" "~n")))
+                    "" ""))
+        (argslist (if (equal args "") ""
+                    (concat ", [" args "]")))
+        )
     (if (equal erl-trace-level 'detail)
         (concat printf "(\"~p:" user ":~s:~p:~p:~p:" fmt endfmt "\",\n"
                 "[erl_trace_process_info(), erl_trace_timestamp(),\n?MODULE, "
                 func ", ?LINE" args "]),")
-      (concat printf "(\"~p:~p:~p:" fmt endfmt "\", [?MODULE, " func ", ?LINE"
-              args "]),"))))
+      (concat printf "(\"" prefix ": " fmt endfmt "\"" argslist "),")
+      )
+    ))
 
-(defun erl-trace-concat-use-macro (fmt args)
+(defun erl-trace-concat-macro (fmt args)
   (let ((prefix
          (cond
           ;; iotd
-          ((and (equal erl-trace-mode 'iotd)
+          ((and (equal erl-trace-mode 'macro)
                 (equal erl-trace-level 'simple)
                 )
            "?iotd")
-          ((and (equal erl-trace-mode 'iotd)
+          ((and (equal erl-trace-mode 'macro)
                 (equal erl-trace-level 'detail))
            "?iotdd")
 
@@ -388,14 +385,11 @@ end,")
                 (equal erl-trace-level 'detail))
            "?cttdd")
 
-          ;; DEBUG
-          ((equal erl-trace-mode 'debug)
-           "?LOG_DEBUG")
           ("io:format")
           ))
         (argslist (if (equal args "") ""
                     (concat ", [" args "]")))
-        (endfmt (if (or (equal erl-trace-ct-pal 'true)
+        (endfmt (if (or (equal erl-trace-mode 'ct)
                         (string-match ".*_SUITE.erl" (buffer-file-name)))
                     "" "~n")))
     (concat prefix "(\"" fmt endfmt "\"" argslist "),"))
@@ -405,24 +399,19 @@ end,")
   (if (cdr vars)
       (let* ((head (car vars))
              (tail (cdr vars))
-             (nacc (concat acc head ": ~p~n")))
+             (nacc (concat acc head "=~p ")))
         (erl-trace-fmt-vars tail nacc))
-    ;; (concat "~n" acc (car vars) ": ~p")))
-    (concat acc (car vars) ": ~p")))
+    (concat acc (car vars) "=~p")))
 
 (defun erl-trace-args-vars (vars acc)
   (message "var%s acc: %s" vars acc)
   (if (cdr vars)
       (let* ((head (car vars))
              (tail (cdr vars))
-             (nacc (if (equal erl-trace-explicit 'false)
-                       (concat acc head ", ")
-                     (concat acc ", " head))))
+             (nacc (if (equal erl-trace-mode 'io) (concat acc ", " head) (concat acc head ", "))))
         (erl-trace-args-vars tail nacc))
-    (if (equal erl-trace-explicit 'false)
-        (concat acc (car vars))
-      (concat acc ", " (car vars)))
-    ))
+    (if (equal erl-trace-mode 'io) (concat acc ", " (car vars)) (concat acc (car vars))))
+  )
 
 (defun erl-trace-insert-string (string &optional auto)
   (erl-trace-debug-msg "Insert %s" string)
@@ -501,19 +490,17 @@ end,")
   (interactive)
   (let ((command (completing-read "Run erl-trace: " '("erl-trace-set-mode"
                                                       "erl-trace-info"
+                                                      "erl-trace-set-prefix"
                                                       "erl-trace-level"
-                                                      "erl-trace-ctpal"
-                                                      "erl-trace-explicit"
                                                       "erl-trace-clause"
                                                       "erl-trace-stacktrace"))))
     (cond
      ((equal command "erl-trace-set-mode")       (erl-trace-set-mode))
      ((equal command "erl-trace-info")       (erl-trace-show-info))
      ((equal command "erl-trace-level")      (erl-trace-level-toggle))
-     ((equal command "erl-trace-ctpal")      (erl-trace-ct-pal-toggle))
-     ((equal command "erl-trace-explicit")    (erl-trace-explicit-toggle))
      ((equal command "erl-trace-clause")     (erl-trace-clause))
      ((equal command "erl-trace-stacktrace") (erl-trace-stacktrace))
+     ((equal command "erl-trace-set-prefix") (erl-trace-set-prefix))
      )))
 
 ;; -----------------------------------------------------------------------------
