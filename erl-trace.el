@@ -1,5 +1,6 @@
 ;;; erl-trace.el --- a simple package                     -*- lexical-binding: t; -*-
-;; Package-Version: 20211028.1412
+;; Package-Version: 20240326.2506
+;; Package-X-Original-Version: 20211028.1412
 
 ;; Copyright (C) 2021
 ;; This program is free software; you can redistribute it and/or modify
@@ -87,81 +88,140 @@ catch _Class:_Reason:Stacktrace-!- ->
         ok
 end,")
 
-(defvar erl-trace-erlang-vsn 23)
-(defvar erl-trace-mode 'debug)
-(defvar erl-trace-level 'simple)
-(defvar erl-trace-newline-begin 'false)
-(defvar erl-trace-newline-split 't)
+(defconst erl-trace-option-keys
+  '(:detail :location :newline)
+  "Valid trace options used by `erl-trace`.
+
+- :detail   → Include process registered name or PID and timestamp in the trace
+- :location → Include location info as ?MODULE:?FUNCTION_NAME:?LINE
+- :newline  → If non-nil, format each variable on a new line (using ~n)")
+
+(defun erl-get-version ()
+  "Return the current OTP version as a string, e.g., \"25\"."
+  (string-trim
+   (shell-command-to-string
+    "erl -noshell -eval 'io:format(\"~s\", [erlang:system_info(otp_release)]), halt().'")))
+
+(defvar erl-trace-erlang-vsn (erl-get-version))
+
+(defconst erl-trace-value-fmt " = ~p")
+
+(defvar erl-trace-mode 'debug
+  "Current mode for inserting Erlang trace lines.
+Supported values:
+- 'debug  → Insert ?LOG_DEBUG(...)
+- 'info   → Insert ?LOG_INFO(...)
+- 'error  → Insert ?LOG_ERROR(...)
+- 'ct     → Insert ct:pal(...) for Common Test
+- 'io     → Insert raw io:format(...) trace
+- 'macro  → Reserved for custom macro injection")
+
 (defvar erl-trace-prefix '())
+
 (defvar erl-trace-stored '())
 
-;; -----------------------------------------------------------------------------
-;; SHOW-INFO
-;; -----------------------------------------------------------------------------
-(defun erl-trace-show-info ()
-  (message "Version=%s Mode=%s Level=%s Prefix=%s Stored=%s"
-           erl-trace-erlang-vsn erl-trace-mode erl-trace-level
-           erl-trace-prefix erl-trace-stored)
-  )
+(defvar erl-trace-options
+  (let ((opts nil))
+    (dolist (opt erl-trace-option-keys)
+      (setq opts (plist-put opts opt t)))
+    opts)
+  "Plist storing current erl-trace configuration.")
 
-;; -----------------------------------------------------------------------------
-;; LEVEL-TOGGLE
-;; -----------------------------------------------------------------------------
-(defun erl-trace-level-toggle ()
-  "Toggle erl-trace between `simple' and `detail'."
-  (if (equal erl-trace-level 'simple)
-      (setq erl-trace-level 'detail)
-    (setq erl-trace-level 'simple)))
-
-;; -----------------------------------------------------------------------------
-;; CT-PAL-TOOGLE
-;; -----------------------------------------------------------------------------
-;; (defun erl-trace-ct-pal-toggle ()
-;;   "Toggle erl-trace between `io:format' and `ct:pal'."
-;;   (if (equal erl-trace-ct-pal 'false)
-;;       (setq erl-trace-ct-pal 'true)
-;;     (setq erl-trace-ct-pal 'false)))
-
-;; -----------------------------------------------------------------------------
-;; SET-MODE
-;; -----------------------------------------------------------------------------
-(defun erl-trace-set-mode ()
+;; Functions
+(defun erl-trace-run-cmd ()
+  "Show current trace config and prompt user for a trace command."
   (interactive)
-  (let ((tracemode (completing-read "Mode:" '("debug"
-                                               "info"
-                                               "error"
-                                               "io"
-                                               "ct"
-                                               "macro"))))
-    (cond ((equal tracemode "debug") (setq erl-trace-mode 'debug))
-          ((equal tracemode "error") (setq erl-trace-mode 'error))
-          ((equal tracemode "info") (setq erl-trace-mode 'info))
-          ((equal tracemode "io") (setq erl-trace-mode 'io))
-          ((equal tracemode "ct") (setq erl-trace-mode 'ct))
-          ((equal tracemode "macro") (setq erl-trace-mode 'macro))
-          (t 'io)
-          )
-    )
+  (let* ((commands '(("mode"       . erl-trace-set-mode)
+                     ("toggle"     . toggle-option-wrapper)
+                     ("clause"     . erl-trace-clause)
+                     ("stacktrace" . erl-trace-stacktrace)
+                     ("set-prefix" . erl-trace-set-prefix)))
+         (info (erl-trace-info-line))
+         (choice (completing-read
+                  (concat "Trace config: " info "\nRun erl-trace: ")
+                  (mapcar #'car commands)))
+         (fn (cdr (assoc choice commands))))
+    (when fn (funcall fn))))
+
+(defun erl-trace-info-line ()
+  "Return a compact one-line summary of erl-trace config state."
+  (let ((opts (mapconcat
+               (lambda (opt)
+                 (format "%s:%s"
+                         (substring (symbol-name opt) 1)
+                         (if (plist-get erl-trace-options opt) "on" "off")))
+               erl-trace-option-keys "  ")))
+    (format "vsn:%s  mode:%s  prefix:%s  stored:%s  %s"
+            (or erl-trace-erlang-vsn "N/A")
+            (or erl-trace-mode "nil")
+            (or erl-trace-prefix "")
+            (if erl-trace-stored "yes" "no")
+            opts)))
+
+(defun toggle-option-wrapper ()
+  "Prompt user with current trace option values, and toggle selected one."
+  (let* ((display-items
+          (mapcar (lambda (opt)
+                    (let ((val (plist-get erl-trace-options opt)))
+                      (cons (format "%s (%s)"
+                                    (substring (symbol-name opt) 1)
+                                    (if val "on" "off"))
+                            opt)))
+                  erl-trace-option-keys))
+         (choice (completing-read "Toggle trace option: " (mapcar #'car display-items)))
+         (key (cdr (assoc choice display-items))))
+    (erl-trace-toggle-option key)))
+
+(defun erl-trace-toggle-option (key)
+  "Toggle a boolean option in `erl-trace-options`. KEY must be a keyword."
+  (when (memq key erl-trace-option-keys)
+    (let ((new-val (not (plist-get erl-trace-options key))))
+      (setq erl-trace-options (plist-put erl-trace-options key new-val))
+      (message "Set %s: %s" key new-val))))
+
+(defun erl-trace-show-options ()
+  "Show current values of all trace options."
+  (message "Current erl-trace-options: %s" erl-trace-options))
+
+(defun erl-trace-key-bindings ()
+  (global-set-key (kbd "C-c C-t") 'erl-trace-insert)
+  (global-set-key (kbd "C-c C-e") 'erl-trace-run-cmd)
+  (global-set-key (kbd "C-c C-r") 'erl-trace-store)
   )
+
+(defun erl-trace-show-info ()
+  "Show current trace configuration in minibuffer."
+  (let ((summary
+         (mapconcat (lambda (opt)
+                      (format "%s:%s"
+                              (substring (symbol-name opt) 1)
+                              (if (plist-get erl-trace-options opt) "on" "off")))
+                    erl-trace-option-keys "  ")))
+    (message "Trace options → %s" summary)))
+
+(defun erl-trace-set-mode ()
+  "Interactively set the value of `erl-trace-mode`.
+
+This controls how trace lines are inserted in Erlang code.
+Available modes include: \"debug\", \"info\", \"error\", \"io\", \"ct\", and \"macro\".
+
+See the variable `erl-trace-mode` for more details on what each mode does."
+  (interactive)
+  (let* ((choices '("debug" "info" "error" "io" "ct" "macro"))
+         (tracemode (completing-read "Mode: " choices))
+         (mode-symbol (intern tracemode)))
+    (when (member tracemode choices)
+      (setq erl-trace-mode mode-symbol))))
 
 (defun erl-trace-set-prefix ()
   (interactive)
   (setq user-input (read-string "Prefix: "))
-  (setq erl-trace-prefix user-input)
+  (setq erl-trace-prefix
+        (if (equal user-input "user")
+            (getenv "USER") user-input))
+  (erl-trace-debug-msg "trace-set-prefix is set to %s" erl-trace-prefix)
   )
 
-
-(defun erlang-get-current-function ()
-  "Get the name of the current Erlang function."
-  (interactive)
-  (require 'erlang)
-  (save-excursion
-    (erlang-beginning-of-function)
-    (erlang-get-function-name)))
-
-;; -----------------------------------------------------------------------------
-;; ADD STACKTRACE
-;; -----------------------------------------------------------------------------
 (defun erl-trace-stacktrace ()
   "Adding stacktrace at point."
   (erl-trace-maybe-insert-iotrace-macro)
@@ -177,9 +237,6 @@ end,")
       (erl-trace-insert))
     (indent-region start-point (point))))
 
-;; -----------------------------------------------------------------------------
-;; STORE
-;; -----------------------------------------------------------------------------
 (defun erl-trace-store ()
   (interactive)
   (when (equal (erl-trace-what-at-point) 'variable)
@@ -188,30 +245,35 @@ end,")
       (setq erl-trace-stored nstored)
       (message "Stored: %s" erl-trace-stored))))
 
-;; -----------------------------------------------------------------------------
-;; INSERT
-;; -----------------------------------------------------------------------------
 (defun erl-trace-insert ()
+  "Insert an Erlang trace statement based on the current context."
   (interactive)
   (erl-trace-maybe-insert-iotrace-macro)
   (erl-trace-maybe-insert-supfun)
-  (cond ((equal (erl-trace-what-at-point) 'atom)
-         (erl-trace-debug-msg "Insert %s..." "atom")
-         (erl-trace-insert-string (erl-trace-build-string 'atom)))
-        ((equal (erl-trace-what-at-point) 'variable)
-         (erl-trace-debug-msg "Insert %s..." "variable")
-         (let ((string (erl-trace-build-string 'variable)))
-           (erl-trace-debug-msg "String %s" string))
-         (erl-trace-insert-string (erl-trace-build-string 'variable)))
-        ((and (equal (erl-trace-what-at-point) 'nothing)
-              erl-trace-stored)
-         (erl-trace-debug-msg "Insert %s..." "stored")
-         (erl-trace-insert-string (erl-trace-build-string 'stored)))
-        ((and (equal (erl-trace-what-at-point) 'nothing)
-              (equal erl-trace-stored nil))
-         (erl-trace-debug-msg "Insert %s..." "nothing")
-         (erl-trace-insert-string (erl-trace-build-string 'nothing))
-         (erl-trace-goto-marked "-!-"))))
+  (let ((what (erl-trace-what-at-point)))
+    (cl-case what
+      (atom
+       (erl-trace-debug-msg "Insert atom...")
+       (erl-trace-insert-string (erl-trace-build-string 'atom)))
+
+      (variable
+       (erl-trace-debug-msg "Insert variable...")
+       (let ((str (erl-trace-build-string 'variable)))
+         (erl-trace-debug-msg "String: %s" str)
+         (erl-trace-insert-string str)))
+
+      (nothing
+       (if erl-trace-stored
+           (progn
+             (erl-trace-debug-msg "Insert stored...")
+             (erl-trace-insert-string (erl-trace-build-string 'stored)))
+         (progn
+           (erl-trace-debug-msg "Insert nothing...")
+           (erl-trace-insert-string (erl-trace-build-string 'nothing))
+           (erl-trace-goto-marked "-!-"))))
+
+      (t
+       (erl-trace-debug-msg "Unknown context for trace insert: %s" what)))))
 
 (defun erl-trace-maybe-insert-supfun ()
   "Check whether we need to insert macro or support functions."
@@ -232,23 +294,20 @@ end,")
 
 (defun erl-trace-insert-supfun ()
   (erl-trace-debug-msg "Insert %s..." "support function")
-  (end-of-buffer)
-  (newline)
-  (erl-trace-insert-string erl-trace-timestamp t)
-  (goto-char (- (point) 1))
-  (newline)
-  (erl-trace-insert-string erl-trace-get-user-name t)
-  (goto-char (- (point) 1))
-  (newline)
-  (erl-trace-insert-string erl-trace-procinfo t)
-  (goto-char (- (point) 1))
-  (newline)
-  (erl-trace-insert-string erl-trace-function t)
-  )
+  (goto-char (point-max))
+  (insert "\n")
+  (let ((support-data-strings
+         (list erl-trace-timestamp
+               erl-trace-get-user-name
+               erl-trace-procinfo
+               erl-trace-function)))
+    (dolist (str support-data-strings)
+      (erl-trace-insert-string str t)
+      (insert "\n"))))
 
 (defun erl-trace-insert-macros ()
   (erl-trace-debug-msg "Insert %s..." "macro")
-  (beginning-of-buffer)
+  (goto-char (point-min))
   (erl-trace-insert-string erl-trace-macro t))
 
 (defun erl-trace-maybe-insert-iotrace-macro ()
@@ -258,7 +317,7 @@ end,")
                (string-match ".*.erl" (buffer-file-name))
                (equal erl-trace-mode 'macro))
       (erl-trace-debug-msg "Insert %s..." "erlang trace macro")
-      (beginning-of-buffer)
+      (goto-char (point-min))
       (erl-trace-insert-string erl-trace-iotrace-macro t))))
 
 (defun erl-trace-maybe-delete-iotrace-macro ()
@@ -266,7 +325,7 @@ end,")
   (save-excursion
     (when (erl-trace-no-iotrace-macro)
       (erl-trace-debug-msg "Delete %s..." "explicit")
-      (beginning-of-buffer)
+      (goto-char (point-min))
       )))
 
 (defun erl-trace-erlang-version ()
@@ -283,128 +342,133 @@ end,")
 
 (defun erl-trace-need-macro ()
   (when (< erl-trace-erlang-vsn 19)
-    (beginning-of-buffer)
+    (goto-char (point-min))
     (if (condition-case
             nil (search-forward "-ifndef(FUNC).")
           (error nil))
         nil t)))
 
 (defun erl-trace-no-iotrace-macro ()
-  (beginning-of-buffer)
+  (goto-char (point-min))
   (if (condition-case
           nil (search-forward "IO_TRACE_DEBUG")
         (error nil))
       nil t))
 
 (defun erl-trace-need-supfun ()
-  (end-of-buffer)
+  (goto-char (point-max))
   (if (condition-case
           nil (search-backward "erl-trace support functions")
         (error nil))
       nil t))
 
 (defun erl-trace-build-string (type)
-  (cond ((equal type 'nothing)
-         (let* ((fmt " -!-")
-                (args ""))
-           (erl-trace-concat fmt args)))
-        ((equal type 'atom)
-         (let* ((atom (thing-at-point 'symbol))
-                (fmt (concat atom ": "))
-                (args ""))
-           (erl-trace-concat fmt args)))
-        ((equal type 'variable)
-         (let* ((var (thing-at-point 'symbol))
-                (fmt (if (or (string-match-p "IKeypath" var)
-                             (string-match-p "IKP" var))
-                         (concat " -=>" var ": ~0p")
-                       (if (equal erl-trace-newline-begin 'true)
-                           (concat "~n" var " = ~p")
-                         (concat var " = ~p"))
-                       ))
-                (args  var))
-           (erl-trace-concat fmt args)))
-        ((equal type 'variable)
-         (let* ((var (thing-at-point 'symbol))
-                (fmt (concat "~n" var " = ~p "))
-                (args var))
-           (erl-trace-concat fmt args)))
-        ((equal type 'stored)
-         (let* ((vars (delete-dups erl-trace-stored))
-                (fmt (erl-trace-fmt-vars vars ""))
-                (args (erl-trace-args-vars vars "")))
-           (setq erl-trace-stored '())
-           (erl-trace-concat fmt args)))))
+  "Generate a formatted Erlang trace string based on TYPE.
+Supports 'nothing, 'atom, 'variable, 'stored.
+ - 'nothing: insert a simple trace marker
+ - 'atom: insert the current symbol name as a tag
+ - 'variable: format the current variable with its value
+ - 'stored: use the stored list of variables"
+  (cl-case type
+    (nothing
+     (erl-trace-concat " -!-" ""))
+
+    (atom
+     (let* ((atom (thing-at-point 'symbol))
+            (fmt (concat atom ""))
+            (args ""))
+       (erl-trace-concat fmt args)))
+
+    (variable
+     (let* ((var (thing-at-point 'symbol))
+            (fmt (concat var erl-trace-value-fmt))
+            (args var))
+       (erl-trace-concat fmt args)))
+
+    (stored
+     (let* ((vars (delete-dups erl-trace-stored))
+            (fmt (erl-trace-format-multi-vars vars))
+            (args (mapconcat #'identity vars ", ")))
+       (setq erl-trace-stored '())
+       (erl-trace-concat fmt args)))
+
+    (t
+     (error "Unsupported trace type: %s" type))))
+
+(defun erl-trace-format-multi-vars (vars)
+  "Format a list of VARS with ~p per line, optionally starting with ~n."
+  (let* ((newline (plist-get erl-trace-options :newline))
+         (fmt-list
+          (mapcar (lambda (var) (concat var erl-trace-value-fmt)) vars))
+         )
+    (mapconcat #'identity fmt-list (if newline "~n" " "))))
 
 (defun erl-trace-concat (fmt args)
-  (if (equal erl-trace-mode 'macro) (erl-trace-concat-macro fmt args)
+  (if (equal erl-trace-mode 'macro)
+      (erl-trace-concat-macro fmt args)
     (erl-trace-concat-normal fmt args)
     )
   )
 
 (defun erl-trace-concat-normal (fmt args)
-  (let ((user (getenv "USER"))
-        (prefix (if (equal erl-trace-prefix '"") (erlang-get-current-function) erl-trace-prefix))
-        (func (if (< erl-trace-erlang-vsn 19) "?FUNC" "?FUNCTION_NAME"))
-        (printf (cond ((equal erl-trace-mode 'debug) "?LOG_DEBUG")
-                      ((equal erl-trace-mode 'error) "?LOG_ERROR")
-                      ((equal erl-trace-mode 'info) "?LOG_INFO")
-                      ((equal erl-trace-mode 'ct) "ct:pal")
-                      (t "io:format")
-                ))
-        (endfmt (if (or (equal erl-trace-mode 'ct)
-                        (string-match ".*_SUITE.erl" (buffer-file-name)))
-                    "" ""))
-        (argslist (if (equal args "") ""
-                    (concat ", [" args "]")))
-        )
-    (if (equal erl-trace-level 'detail)
-        (concat printf "(\"~p:" user ":~s:~p:~p:~p:" fmt endfmt "\",\n"
-                "[erl_trace_process_info(), erl_trace_timestamp(),\n?MODULE, "
-                func ", ?LINE" args "]),")
-      (concat printf "(\"" prefix ": " fmt endfmt "\"" argslist "),")
-      )
-    ))
+  "Generate an Erlang trace log line with optional detail and location."
+  (erl-trace-debug-msg "fmt: %s args: %s" fmt args)
+  (let* (
+         (printf (pcase erl-trace-mode
+                   ('debug "?LOG_DEBUG")
+                   ('error "?LOG_ERROR")
+                   ('info  "?LOG_INFO")
+                   ('ct    "ct:pal")
+                   (_      "io:format")))
+         (detail (plist-get erl-trace-options :detail))
+         (location (plist-get erl-trace-options :location))
+         (fmt-prefix (string-join (append
+                                   (list erl-trace-prefix)
+                                   (when detail '("~p:~p"))
+                                   (when location '("~p:~p:~p")))
+                                  " "))
+         (args-prefix
+          (append
+           (when detail '("erl_trace_process_info()" "erl_trace_timestamp()"))
+           (when location '("?MODULE" "?FUNCTION_NAME" "?LINE"))))
+         (argslist (string-trim args))
+         (final-args
+          (string-join
+           (append args-prefix (unless (string-empty-p argslist) (list argslist)))
+           ", ")
+          )
+         )
+    (format "%s(\"%s %s\", [%s]),"
+            printf
+            (concat (if (equal printf "io:format") "~n" "") fmt-prefix)
+            fmt
+            final-args)))
 
 (defun erl-trace-concat-macro (fmt args)
-  (let ((prefix
-         (cond
-          ;; iotd
-          ((and (equal erl-trace-mode 'macro)
-                (equal erl-trace-level 'simple)
-                )
-           "?iotd")
-          ((and (equal erl-trace-mode 'macro)
-                (equal erl-trace-level 'detail))
-           "?iotdd")
-
-          ;; ctpal
-          ((and (equal erl-trace-mode 'ctpal)
-                (equal erl-trace-level 'simple))
-           "?cttd")
-          ((and (equal erl-trace-mode 'ctpal)
-                (equal erl-trace-level 'detail))
-           "?cttdd")
-
-          ("io:format")
-          ))
-        (argslist (if (equal args "") ""
-                    (concat ", [" args "]")))
-        (endfmt (if (or (equal erl-trace-mode 'ct)
-                        (string-match ".*_SUITE.erl" (buffer-file-name)))
-                    "" "~n")))
+  (let* (
+         (detail (plist-get erl-trace-options :detail))
+         (prefix
+          (cond
+           ((and (equal erl-trace-mode 'macro) detail ) "?iotd")
+           ((and (equal erl-trace-mode 'macro) detail) "?iotdd")
+           ((and (equal erl-trace-mode 'ctpal) detail) "?cttd")
+           ((and (equal erl-trace-mode 'ctpal) detail) "?cttdd")
+           ("io:format")
+           ))
+         (argslist (if (equal args "") "" (concat ", [" args "]")))
+         (endfmt (if (or (equal erl-trace-mode 'ct)
+                         (string-match ".*_SUITE.erl" (buffer-file-name)))
+                     "" "~n")))
     (concat prefix "(\"" fmt endfmt "\"" argslist "),"))
   )
 
 (defun erl-trace-fmt-vars (vars acc)
-  (let ((newline-split (if (boundp 'erl-trace-newline-split) erl-trace-newline-split t)))
-    (message "erl-trace-newline-split: %s" erl-trace-newline-split)
-    (if (cdr vars)
-        (let* ((head (car vars))
-               (tail (cdr vars))
-               (nacc (concat acc head " = ~p" (if (eq erl-trace-newline-split t) "~n" ""))))
-          (erl-trace-fmt-vars tail nacc))
-      (concat acc (car vars) " = ~p"))))
+  (if (cdr vars)
+      (let* ((head (car vars))
+             (tail (cdr vars))
+             (nacc (concat acc head erl-trace-value-fmt)))
+        (erl-trace-fmt-vars tail nacc))
+    (concat acc (car vars) erl-trace-value-fmt)))
 
 (defun erl-trace-args-vars (vars acc)
   (message "var%s acc: %s" vars acc)
@@ -430,7 +494,7 @@ end,")
 
 (defun erl-trace-goto-marked (string)
   (when (condition-case nil (search-forward string) (error nil))
-    (delete-backward-char (length string))))
+    (delete-char (length string))))
 
 (defun erl-trace-what-at-point ()
   "Returns `variable' `atom' or `nothing' at cursor."
@@ -486,46 +550,14 @@ end,")
           (insert str)
           (erl-trace-clause-loop (+ (- (point) current) stop) (+ number 1)))))))
 
-;; -----------------------------------------------------------------------------
-;; RUN-COMMAND
-;; -----------------------------------------------------------------------------
-(defun erl-trace-run-cmd ()
-  (interactive)
-  (let ((command (completing-read "Run erl-trace: " '("erl-trace-set-mode"
-                                                      "erl-trace-info"
-                                                      "erl-trace-set-prefix"
-                                                      "erl-trace-level"
-                                                      "erl-trace-clause"
-                                                      "erl-trace-stacktrace"))))
-    (cond
-     ((equal command "erl-trace-set-mode")       (erl-trace-set-mode))
-     ((equal command "erl-trace-info")       (erl-trace-show-info))
-     ((equal command "erl-trace-level")      (erl-trace-level-toggle))
-     ((equal command "erl-trace-clause")     (erl-trace-clause))
-     ((equal command "erl-trace-stacktrace") (erl-trace-stacktrace))
-     ((equal command "erl-trace-set-prefix") (erl-trace-set-prefix))
-     )))
-
-;; -----------------------------------------------------------------------------
-;; RUN-COMMAND
-;; -----------------------------------------------------------------------------
-(defun erl-trace-key-bindings ()
-  (global-set-key (kbd "C-c C-t") 'erl-trace-insert)
-  (global-set-key (kbd "C-c C-e") 'erl-trace-run-cmd)
-  (global-set-key (kbd "C-c C-r") 'erl-trace-store)
-  )
-(erl-trace-key-bindings)
-
-;; -----------------------------------------------------------------------------
-;; DEBUG-MSG
-;; -----------------------------------------------------------------------------
 (defvar erl-trace-debug nil
   "Control whether printing debug messages.")
 
 (defun erl-trace-debug-msg (format &rest args)
   "Debug message."
-  (when erl-trace-debug (apply 'message (add-to-list 'args format))))
+  (when erl-trace-debug
+    (apply 'message (cons format args))))
+
 
 (provide 'erl-trace)
-
 ;;; erl-trace.el ends here
