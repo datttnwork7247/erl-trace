@@ -16,6 +16,9 @@
 ;; You should have received a copy of the GNU General Public License
 ;; along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+;; tmp
+(require 'erl-ct)
+
 (defconst erl-trace-macro
   "-ifndef(FUNC).
 -define(FUNC, element(2, element(2, process_info(self(), current_function)))).
@@ -140,7 +143,8 @@ Supported values:
                      ("toggle"     . toggle-option-wrapper)
                      ("clause"     . erl-trace-clause)
                      ("stacktrace" . erl-trace-stacktrace)
-                     ("set-prefix" . erl-trace-set-prefix)))
+                     ("set-prefix" . erl-trace-set-prefix)
+                     ("make-ct" . erlang-mk-common-test-command)))
          (info (erl-trace-info-line))
          (choice (completing-read
                   (concat "Trace config: " info "\nRun erl-trace: ")
@@ -528,12 +532,10 @@ Supports 'nothing, 'atom, 'variable, 'stored.
   ;; Lets move to end of function header.
   (when (erl-trace-func-header-p) (search-forward "->")))
 
-;; -----------------------------------------------------------------------------
-;; CLAUSE
-;; -----------------------------------------------------------------------------
-;; Increase the number of lisp bindings.
 (setq max-specpdl-size 13000)
+
 (defun erl-trace-clause ()
+  "Insert trace lines for each clause (->) in the current Erlang function."
   (save-excursion
     (erl-trace-maybe-insert-iotrace-macro)
     (erl-trace-maybe-insert-supfun)
