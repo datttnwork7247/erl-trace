@@ -1,24 +1,188 @@
-#+TITLE: erl-trace
+#+TITLE: erl-trace.el
+#+TAGS: erlang|trace|erl-trace|debug
+#+AUTHOR: Dat Nguyen
 
-#+TAGS: erlang|trace|erl-trace
+A developer tool for Emacs to help insert Erlang trace/debug logging faster, with customizable output formats.
 
-* Description
-  Put some io:format/ct:pal in erlang files.
-  This is kind of "reinvent the wheel", I use it because I used to it.
-  If you have a more effective tool, consider using that one.
+* ✨ Features
 
-* Key bindings
+- 🐘 Erlang-aware trace insertion
+- 📍 Add metadata like module, function, line, timestamp, process
+- 🔄 Supports multiple output styles:
+  - ~?LOG_DEBUG~, ~?LOG_INFO~, ~ct:pal~, ~io:format~
+- ⚙️ Toggle options:
+  - ~:detail~ – include timestamp and process info
+  - ~:location~ – include ~?MODULE~, ~?FUNCTION_NAME~, ~?LINE~
+  - ~:newline~ – pretty format multi-variable output
+- 📋 Stored variable tracing: insert many vars at once
+- 🧪 ERT test suite included
+
+* 🔑 Key bindings
 
 | Key binding          | Description                                      |
 |----------------------+--------------------------------------------------|
-| ~C-c C-t~            | Print out a atom or value of a parameter.        |
+| ~C-c C-t~            | Print out an atom or value of a parameter.       |
 | ~C-c C-r~            | Store parameters for print out                   |
 | ~C-c C-e~            | Extra commands                                   |
-| Commands:            | -----------------------------------------        |
-| erl-trace-info       | Show stored parameters                           |
-| erl-trace-level      | Toggle between simple and complex trace level    |
-| erl-trace-ctpal      | Toggle trace for erlang common test (use ct:pal) |
-| erl-trace-explicit   | Toogle use io:format explicitly                  |
-| erl-trace-clause     | Put trace after ->                               |
-| erl-trace-stacktrace | Put stacktrace by try-catch                      |
 
+
+* 🛠 Usage
+** 📍Insert erl-trace line
+Bind this to ~C-c C-t~ or call manually:
+
+#+begin_src emacs-lisp
+M-x erl-trace-insert
+#+end_src
+
+***Example***
+
+#+begin_src
+?LOG_DEBUG("dat ~p:~p myVar = ~p", [erl_trace_process_info(), erl_trace_timestamp(), myVar]),
+#+end_src
+
+Or:
+
+#+begin_src
+ct:pal("trace ~p:~p:~p result = ~p", [?MODULE, ?FUNCTION_NAME, ?LINE, Result]),
+#+end_src
+
+** 💥 Stacktrace Insertion
+
+The `stacktrace` command in `erl-trace` adds a block of code to capture and log stacktraces, helpful for debugging runtime exceptions.
+
+You can invoke it via:
+
+#+begin_src emacs-lisp
+M-x erl-trace-run-cmd
+;; Then select: "stacktrace"
+#+end_src
+
+It inserts the following Erlang code at point:
+
+#+begin_src
+    try throw(exit)
+    catch
+        _Class:_Reason:Stacktrace ->
+            ?LOG_DEBUG("ST-!- ~p", [Stacktrace]),
+            ok
+    end,
+#+end_src
+
+This works on OTP = < 23. Consider switch to =__STACKTRACE__ + catch _:_:_ ->= in OTP 24+
+
+> 💡 Tip: The `ST-!-` variable name is unique to make it searchable in logs.
+
+** 🧩 Clause Tracing
+
+You can trace the **execution path** through function clauses and control structures by inserting clause-level debug markers.
+
+**Usage:**
+- Run `C-c C-e` and select `clause` from the trace command menu.
+- The command will insert numbered `?LOG_DEBUG(...)` lines for each clause or branch in your function.
+
+It helps you understand **which path** the Erlang code actually takes at runtime.
+
+**Example before:**
+#+begin_src
+foo(Atom) when is_atom(Atom) ->
+    this_is_atom;
+foo(NotAtom) ->
+    case is_tuple(NotAtom) of
+        true ->
+            this_is_tupple;
+        false ->
+            other
+    end.
+#+end_src
+
+**Example after running `clause`:**
+#+begin_src
+foo(Atom) when is_atom(Atom) ->
+    ?LOG_DEBUG("my_trace case: 1", []),
+    this_is_atom;
+foo(NotAtom) ->
+    ?LOG_DEBUG("my_trace case: 2", []),
+    case is_tuple(NotAtom) of
+        true ->
+            ?LOG_DEBUG("my_trace case: 3", []),
+            this_is_tupple;
+        false ->
+            ?LOG_DEBUG("my_trace case: 4", []),
+            other
+    end.
+#+end_src
+
+**Details:**
+- Each clause or case branch is assigned a unique case number.
+- You can customize the prefix via `erl-trace-prefix`.
+- The insertion stops once the current function definition ends (detected by `.` at line end).
+
+**Tip:** This is especially useful for tracing legacy code or debugging unexpected control flow.
+
+** 🔧 Customization
+Bind this to ~C-c C-e~ or call manually:
+
+#+begin_src emacs-lisp
+M-x erl-trace-run-cmd
+#+end_src
+
+You'll be prompted to choose:
+
+- ~mode~         → Choose logging macro (~?LOG_DEBUG~, etc.)
+- ~set-prefix~   → Add a custom prefix (e.g. your name)
+- ~toggle~       → Enable/disable formatting options
+- ~clause~       → Insert a full clause with logging
+- ~stacktrace~   → Insert error stack logging
+- ~variable~     → Trace variable under cursor
+- ~stored~       → Trace previously stored vars
+
+
+* 🔧 Customization
+
+Set options globally in Emacs:
+
+#+begin_src emacs-lisp
+(setq erl-trace-mode 'debug)
+(setq erl-trace-prefix "dat")
+(setq erl-trace-options '(:detail t :location t :newline nil))
+#+end_src
+
+Available modes:
+
+- ~'debug~ → ~?LOG_DEBUG(...)~
+- ~'info~ → ~?LOG_INFO(...)~
+- ~'error~ → ~?LOG_ERROR(...)~
+- ~'ct~ → ~ct:pal(...)~
+- ~'io~ → ~io:format(...)~
+- ~'macro~ → literal macro insertion
+
+* 🧪 Running Tests
+
+Run all tests:
+
+#+begin_src shell
+./run-test.sh
+#+end_src
+
+Or run a single test:
+
+#+begin_src shell
+./run-test.sh testcase
+#+end_src
+
+* 📂 Project Structure
+
+#+begin_example
+erl-trace.el        ; Main Emacs Lisp implementation
+erl-trace-test.el   ; Unit tests for all cases
+run-test.sh         ; Shell script to run all tests
+#+end_example
+
+* 👤 Author
+
+Dat Nguyen
+https://github.com/datttnwork7247
+
+* 📜 License
+
+MIT
