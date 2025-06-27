@@ -237,6 +237,7 @@ See the variable `erl-trace-mode` for more details on what each mode does."
   (erl-trace-maybe-insert-iotrace-macro)
   (erl-trace-maybe-insert-supfun)
   (let ((start-point (point)))
+    (erl-trace-goto-eof-header-if-needed)
     (newline)
     (if (< erl-trace-erlang-vsn 22)
         (insert erl-trace-stacktrace)
